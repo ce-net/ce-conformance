@@ -1,0 +1,5 @@
+# Go build artifacts
+runners/go/go
+*.exe
+*.out
+*.err
