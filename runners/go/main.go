@@ -19,7 +19,14 @@ import (
 	"time"
 
 	ce "github.com/ce-net/ce-go"
+	economy "github.com/ce-net/economy-adapter/clients/go"
 )
+
+// The money scenarios (bAmountWire, bEconomyGated) exercise the ECONOMY ceapp's SDK, not the core
+// substrate SDK — since money is not a substrate concept, the runner reaches for it through the
+// economy adapter's Go client. (If a future build wants a strictly economy-agnostic core runner,
+// these two scenarios + the economy import could sit behind a `//go:build economy` tag; for now
+// they stay in so the full Tier-B matrix compiles and runs against an economy node.)
 
 // pinnedObjectCID is the object CID every CE SDK must produce for the canonical 256-byte object
 // (bytes 0x00..0xff). It proves content addressing is byte-identical across languages.
@@ -227,9 +234,10 @@ func bObjectCID(ctx context.Context, c *ce.Client) result {
 	return result{"object_cid", true, ""}
 }
 
-// bAmountWire: money parses/renders and serializes as a base-unit decimal string (pure).
+// bAmountWire: money parses/renders and serializes as a base-unit decimal string (pure). Money
+// lives in the economy ceapp's SDK now, so this rides economy.Amount rather than the core SDK.
 func bAmountWire() result {
-	a, err := ce.ParseCredits("1.5")
+	a, err := economy.ParseCredits("1.5")
 	if err != nil {
 		return result{"amount_wire", false, err.Error()}
 	}
@@ -249,7 +257,9 @@ func bAmountWire() result {
 // bEconomyGated: a transfer's outcome matches the node's economy mode — success when economy is on,
 // a graceful error (never success, never a hang) when it is off.
 func bEconomyGated(ctx context.Context, c *ce.Client, self string, econ bool) result {
-	_, err := c.Transfer(ctx, self, ce.FromCredits(1))
+	// The transfer is a MONEY call — route it through the economy ceapp's SDK, which wraps the
+	// core client and rides its transport hatch.
+	_, err := economy.New(c).Transfer(ctx, self, economy.FromCredits(1))
 	if econ {
 		if err == nil {
 			return result{"economy_gated", true, ""}
