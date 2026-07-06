@@ -9,9 +9,12 @@
 //! with the same ids and output contract, so the driver (../../run.sh) builds one cross-language
 //! matrix.
 
-use ce_rs::CeClient;
+use ce_rs::{cid, Amount, CeClient};
 use futures_util::StreamExt;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+/// The object CID every CE SDK must produce for the canonical 256-byte object (bytes 0x00..0xff).
+const PINNED_OBJECT_CID: &str = "6523c7e119dc980a9267de7c59a8e5390c294646a1c7ab28e218de0da0b69994";
 
 type Outcome = (bool, String);
 
@@ -138,13 +141,15 @@ async fn s_request_unknown(ce: &CeClient) -> Outcome {
 async fn main() {
     let base = std::env::var("CE_NODE_URL").unwrap_or_else(|_| "http://127.0.0.1:8844".into());
     let ce = CeClient::new(base);
-    let self_id = match ce.status().await {
-        Ok(s) => s.node_id,
+    let st = match ce.status().await {
+        Ok(s) => s,
         Err(e) => {
             println!("CONF setup FAIL: {e}");
             std::process::exit(2);
         }
     };
+    let self_id = st.node_id.clone();
+    let econ = st.economy != Some(false); // None (old node) or Some(true) => economy enabled
 
     let results: Vec<(&str, Outcome)> = vec![
         ("status", s_status(&ce).await),
@@ -152,6 +157,12 @@ async fn main() {
         ("binary_payload", s_binary(&ce).await),
         ("request_reply", s_request_reply(&ce, &self_id).await),
         ("request_unknown_errors", s_request_unknown(&ce).await),
+        // Tier B
+        ("blob_roundtrip", b_blob_roundtrip(&ce).await),
+        ("object_roundtrip", b_object_roundtrip(&ce).await),
+        ("object_cid", b_object_cid(&ce).await),
+        ("amount_wire", b_amount_wire()),
+        ("economy_gated", b_economy_gated(&ce, &self_id, econ).await),
     ];
 
     let mut all_pass = true;
@@ -164,4 +175,78 @@ async fn main() {
         }
     }
     std::process::exit(if all_pass { 0 } else { 1 });
+}
+
+// ---- Tier B: full node surface ----
+
+async fn b_blob_roundtrip(ce: &CeClient) -> Outcome {
+    let data = b"ce-conformance-blob".to_vec();
+    let h = match ce.put_blob(data.clone()).await {
+        Ok(h) => h,
+        Err(e) => return no(e.to_string()),
+    };
+    if h != cid(&data) {
+        return no(format!("node hash {h} != local cid {}", cid(&data)));
+    }
+    match ce.get_blob(&h).await {
+        Ok(back) if back == data => ok(),
+        Ok(_) => no("get_blob round-trip mismatch"),
+        Err(e) => no(e.to_string()),
+    }
+}
+
+async fn b_object_roundtrip(ce: &CeClient) -> Outcome {
+    let n = (1usize << 20) * 2 + 123;
+    let data: Vec<u8> = (0..n).map(|i| (i * 7) as u8).collect();
+    let cid_s = match ce.put_object(&data).await {
+        Ok(c) => c,
+        Err(e) => return no(e.to_string()),
+    };
+    match ce.get_object(&cid_s).await {
+        Ok(got) if got == data => ok(),
+        Ok(_) => no("get_object round-trip mismatch"),
+        Err(e) => no(e.to_string()),
+    }
+}
+
+async fn b_object_cid(ce: &CeClient) -> Outcome {
+    let data: Vec<u8> = (0..256u32).map(|i| i as u8).collect();
+    match ce.put_object(&data).await {
+        Ok(c) if c == PINNED_OBJECT_CID => ok(),
+        Ok(c) => no(format!("got {c} want {PINNED_OBJECT_CID}")),
+        Err(e) => no(e.to_string()),
+    }
+}
+
+fn b_amount_wire() -> Outcome {
+    let a = match Amount::parse_credits("1.5") {
+        Ok(a) => a,
+        Err(e) => return no(e.to_string()),
+    };
+    if a.base() != 1_500_000_000_000_000_000i128 {
+        return no(format!("base {}", a.base()));
+    }
+    if a.credits() != "1.5" {
+        return no(format!("credits {}", a.credits()));
+    }
+    match serde_json::to_string(&a) {
+        Ok(s) if s == "\"1500000000000000000\"" => ok(),
+        Ok(s) => no(format!("json {s}")),
+        Err(e) => no(e.to_string()),
+    }
+}
+
+async fn b_economy_gated(ce: &CeClient, self_id: &str, econ: bool) -> Outcome {
+    let r = ce.transfer(self_id, Amount::from_credits(1)).await;
+    if econ {
+        match r {
+            Ok(_) => ok(),
+            Err(e) => no(format!("economy on but transfer failed: {e}")),
+        }
+    } else {
+        match r {
+            Err(_) => ok(),
+            Ok(_) => no("transfer succeeded while economy disabled"),
+        }
+    }
 }

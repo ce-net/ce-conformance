@@ -11,6 +11,7 @@ with the same ids and output contract, so the driver (../../run.sh) builds one c
 matrix. Point $CE_PY_DIR at the ce-py repo so `import ce` finds the vendored client.
 """
 
+import json
 import os
 import queue
 import sys
@@ -19,6 +20,9 @@ import time
 
 sys.path.insert(0, os.environ.get("CE_PY_DIR", ""))
 import ce  # noqa: E402  (path is set above)
+
+# The object CID every CE SDK must produce for the canonical 256-byte object (bytes 0x00..0xff).
+PINNED_OBJECT_CID = "6523c7e119dc980a9267de7c59a8e5390c294646a1c7ab28e218de0da0b69994"
 
 
 def nonce() -> str:
@@ -93,6 +97,49 @@ def s5_request_unknown_errors(c) -> tuple[bool, str]:
         return (elapsed < 9.0), f"bounded in {elapsed:.1f}s"
 
 
+# ---- Tier B: full node surface ----
+
+
+def b_blob_roundtrip(c) -> tuple[bool, str]:
+    data = b"ce-conformance-blob"
+    h = c.put_blob(data)
+    if h != ce.cid(data):
+        return False, f"node hash {h} != local cid {ce.cid(data)}"
+    return (c.get_blob(h) == data), "get_blob round-trip mismatch"
+
+
+def b_object_roundtrip(c) -> tuple[bool, str]:
+    data = bytes((i * 7) % 256 for i in range((1 << 20) * 2 + 123))
+    cid = c.put_object(data)
+    return (c.get_object(cid) == data), "get_object round-trip mismatch"
+
+
+def b_object_cid(c) -> tuple[bool, str]:
+    data = bytes(range(256))  # canonical object
+    cid = c.put_object(data)
+    return (cid == PINNED_OBJECT_CID), f"got {cid} want {PINNED_OBJECT_CID}"
+
+
+def b_amount_wire() -> tuple[bool, str]:
+    a = ce.Amount.parse_credits("1.5")
+    ok = (
+        a.base == 1_500_000_000_000_000_000
+        and a.credits() == "1.5"
+        and json.dumps(a, default=ce._json_default) == '"1500000000000000000"'
+    )
+    return ok, f"base={a.base} credits={a.credits()}"
+
+
+def b_economy_gated(c, self_id: str, econ: bool) -> tuple[bool, str]:
+    try:
+        c.transfer(self_id, ce.Amount.from_credits(1))
+        return (econ, "transfer succeeded while economy disabled")
+    except ce.CeError as e:
+        if econ:
+            return False, f"economy on but transfer failed: {e}"
+        return True, f"gated (status={getattr(e, 'status', None)})"
+
+
 def main() -> int:
     c = ce.connect()
     try:
@@ -100,10 +147,12 @@ def main() -> int:
     except ce.CeError as e:
         print(f"CONF setup FAIL: node not ready: {e}")
         return 2
-    self_id = c.node_id
+    st = c.status()
+    self_id = st.get("node_id")
     if not self_id:
         print("CONF setup FAIL: no node id")
         return 2
+    econ = st.get("economy") is not False  # None (old node) or True => economy enabled
 
     scenarios = [
         ("status", lambda: s1_status(c)),
@@ -111,6 +160,12 @@ def main() -> int:
         ("binary_payload", lambda: s3_binary_payload(c)),
         ("request_reply", lambda: s4_request_reply(c, self_id)),
         ("request_unknown_errors", lambda: s5_request_unknown_errors(c)),
+        # Tier B
+        ("blob_roundtrip", lambda: b_blob_roundtrip(c)),
+        ("object_roundtrip", lambda: b_object_roundtrip(c)),
+        ("object_cid", lambda: b_object_cid(c)),
+        ("amount_wire", lambda: b_amount_wire()),
+        ("economy_gated", lambda: b_economy_gated(c, self_id, econ)),
     ]
 
     all_pass = True

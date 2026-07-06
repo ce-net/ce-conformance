@@ -80,13 +80,13 @@ dependencies = [
  "ce-rs",
  "futures-util",
  "hex",
+ "serde_json",
  "tokio",
 ]
 
 [[package]]
 name = "ce-lane"
 version = "0.1.0"
-source = "git+https://github.com/ce-net/ce#03b52131d39ad9202ecdc293359eb331b378ae30"
 dependencies = [
  "anyhow",
  "bincode",

@@ -13,12 +13,17 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
 
 	ce "github.com/ce-net/ce-go"
 )
+
+// pinnedObjectCID is the object CID every CE SDK must produce for the canonical 256-byte object
+// (bytes 0x00..0xff). It proves content addressing is byte-identical across languages.
+const pinnedObjectCID = "6523c7e119dc980a9267de7c59a8e5390c294646a1c7ab28e218de0da0b69994"
 
 type result struct {
 	id     string
@@ -37,11 +42,13 @@ func main() {
 		fmt.Printf("CONF setup FAIL: node not ready: %v\n", err)
 		os.Exit(2)
 	}
-	self, err := c.NodeID(ctx)
-	if err != nil || self == "" {
+	st, err := c.Status(ctx)
+	if err != nil || st.NodeID == "" {
 		fmt.Printf("CONF setup FAIL: no node id: %v\n", err)
 		os.Exit(2)
 	}
+	self := st.NodeID
+	econ := st.EconomyEnabled()
 
 	results := []result{
 		s1Status(ctx, c),
@@ -49,6 +56,12 @@ func main() {
 		s3BinaryPayload(ctx, c),
 		s4RequestReply(ctx, c, self),
 		s5RequestUnknownErrors(ctx, c),
+		// Tier B
+		bBlobRoundtrip(ctx, c),
+		bObjectRoundtrip(ctx, c),
+		bObjectCID(ctx, c),
+		bAmountWire(),
+		bEconomyGated(ctx, c, self, econ),
 	}
 
 	allPass := true
@@ -159,4 +172,92 @@ func s5RequestUnknownErrors(ctx context.Context, c *ce.Client) result {
 		return result{"request_unknown_errors", false, fmt.Sprintf("did not bound: took %v", elapsed)}
 	}
 	return result{"request_unknown_errors", true, ""}
+}
+
+// ---- Tier B: full node surface ----
+
+// bBlobRoundtrip: a blob's node hash equals the local CID, and get returns the exact bytes.
+func bBlobRoundtrip(ctx context.Context, c *ce.Client) result {
+	data := []byte("ce-conformance-blob")
+	h, err := c.PutBlob(ctx, data)
+	if err != nil {
+		return result{"blob_roundtrip", false, err.Error()}
+	}
+	if h != ce.CID(data) {
+		return result{"blob_roundtrip", false, fmt.Sprintf("node hash %s != local cid %s", h, ce.CID(data))}
+	}
+	back, err := c.GetBlob(ctx, h)
+	if err != nil || !bytes.Equal(back, data) {
+		return result{"blob_roundtrip", false, "get_blob round-trip mismatch"}
+	}
+	return result{"blob_roundtrip", true, ""}
+}
+
+// bObjectRoundtrip: a multi-chunk object reassembles byte-exact.
+func bObjectRoundtrip(ctx context.Context, c *ce.Client) result {
+	data := make([]byte, ce.DefaultChunkSize*2+123)
+	for i := range data {
+		data[i] = byte(i * 7)
+	}
+	cid, err := c.PutObject(ctx, data)
+	if err != nil {
+		return result{"object_roundtrip", false, err.Error()}
+	}
+	got, err := c.GetObject(ctx, cid)
+	if err != nil || !bytes.Equal(got, data) {
+		return result{"object_roundtrip", false, "get_object round-trip mismatch"}
+	}
+	return result{"object_roundtrip", true, ""}
+}
+
+// bObjectCID: the object CID for the canonical 256-byte object equals the pinned constant every
+// SDK must agree on (cross-language content-address portability).
+func bObjectCID(ctx context.Context, c *ce.Client) result {
+	data := make([]byte, 256)
+	for i := range data {
+		data[i] = byte(i)
+	}
+	cid, err := c.PutObject(ctx, data)
+	if err != nil {
+		return result{"object_cid", false, err.Error()}
+	}
+	if cid != pinnedObjectCID {
+		return result{"object_cid", false, fmt.Sprintf("got %s want %s", cid, pinnedObjectCID)}
+	}
+	return result{"object_cid", true, ""}
+}
+
+// bAmountWire: money parses/renders and serializes as a base-unit decimal string (pure).
+func bAmountWire() result {
+	a, err := ce.ParseCredits("1.5")
+	if err != nil {
+		return result{"amount_wire", false, err.Error()}
+	}
+	if a.Base().String() != "1500000000000000000" {
+		return result{"amount_wire", false, "base " + a.Base().String()}
+	}
+	if a.Credits() != "1.5" {
+		return result{"amount_wire", false, "credits " + a.Credits()}
+	}
+	b, _ := json.Marshal(a)
+	if string(b) != `"1500000000000000000"` {
+		return result{"amount_wire", false, "json " + string(b)}
+	}
+	return result{"amount_wire", true, ""}
+}
+
+// bEconomyGated: a transfer's outcome matches the node's economy mode — success when economy is on,
+// a graceful error (never success, never a hang) when it is off.
+func bEconomyGated(ctx context.Context, c *ce.Client, self string, econ bool) result {
+	_, err := c.Transfer(ctx, self, ce.FromCredits(1))
+	if econ {
+		if err == nil {
+			return result{"economy_gated", true, ""}
+		}
+		return result{"economy_gated", false, "economy on but transfer failed: " + err.Error()}
+	}
+	if err != nil {
+		return result{"economy_gated", true, ""}
+	}
+	return result{"economy_gated", false, "transfer succeeded while economy disabled"}
 }

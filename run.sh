@@ -23,7 +23,7 @@ if ! curl -s -m 3 "$NODE/status" >/dev/null 2>&1; then
   exit 2
 fi
 
-SCENARIOS="status pubsub_text binary_payload request_reply request_unknown_errors"
+SCENARIOS="status pubsub_text binary_payload request_reply request_unknown_errors blob_roundtrip object_roundtrip object_cid amount_wire economy_gated"
 LANGS=""
 FAILED=0
 

@@ -6,3 +6,6 @@ runners/rust/target/
 *.exe
 *.out
 *.err
+
+# ce-dev-link generated (machine-specific, never commit)
+.cargo/

@@ -8,8 +8,11 @@
 // and exits non-zero if any scenario fails. Imports the built SDK bundle directly (ce-ts ships a
 // dependency-free ESM dist), so no npm install is needed; run with `node run.mjs`.
 import {
-  CeClient, serve, utf8ToBytes, bytesToUtf8, discoverApiToken,
+  CeClient, serve, utf8ToBytes, bytesToUtf8, discoverApiToken, Amount, cid,
 } from "../../../ce-ts/dist/index.js";
+
+// The object CID every CE SDK must produce for the canonical 256-byte object (bytes 0x00..0xff).
+const PINNED_OBJECT_CID = "6523c7e119dc980a9267de7c59a8e5390c294646a1c7ab28e218de0da0b69994";
 
 const base = process.env.CE_NODE_URL || "http://127.0.0.1:8844";
 const token = process.env.CE_API_TOKEN || (await discoverApiToken());
@@ -51,7 +54,9 @@ async function awaitPublish(topic, payload, timeoutMs = 8000) {
 }
 
 async function main() {
-  const self = (await ce.status.status()).nodeId;
+  const st = await ce.status.status();
+  const self = st.nodeId;
+  const econ = st.economy !== false; // null/undefined (old node) or true => economy enabled
 
   // status
   try {
@@ -101,6 +106,59 @@ async function main() {
       else fail("request_unknown_errors", `unbounded: ${el}ms`);
     }
   } catch (e) { fail("request_unknown_errors", e); }
+
+  // ---- Tier B: full node surface ----
+
+  // blob_roundtrip
+  try {
+    const data = utf8ToBytes("ce-conformance-blob");
+    const h = await ce.data.putBlob(data);
+    const localCid = await cid(data);
+    if (h !== localCid) fail("blob_roundtrip", `node hash ${h} != local cid ${localCid}`);
+    else if (!eqBytes(await ce.data.getBlob(h), data)) fail("blob_roundtrip", "get_blob mismatch");
+    else pass("blob_roundtrip");
+  } catch (e) { fail("blob_roundtrip", e); }
+
+  // object_roundtrip
+  try {
+    const n = (1 << 20) * 2 + 123;
+    const data = new Uint8Array(n);
+    for (let i = 0; i < n; i++) data[i] = (i * 7) & 0xff;
+    const cidStr = await ce.data.putObject(data);
+    if (eqBytes(await ce.data.getObject(cidStr), data)) pass("object_roundtrip");
+    else fail("object_roundtrip", "get_object mismatch");
+  } catch (e) { fail("object_roundtrip", e); }
+
+  // object_cid (pinned cross-SDK constant)
+  try {
+    const data = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) data[i] = i;
+    const cidStr = await ce.data.putObject(data);
+    if (cidStr === PINNED_OBJECT_CID) pass("object_cid");
+    else fail("object_cid", `got ${cidStr} want ${PINNED_OBJECT_CID}`);
+  } catch (e) { fail("object_cid", e); }
+
+  // amount_wire (pure)
+  try {
+    const a = Amount.fromCredits("1.5");
+    if (a.toBaseUnits() === "1500000000000000000" && a.toCredits() === "1.5" && JSON.stringify(a) === '"1500000000000000000"') {
+      pass("amount_wire");
+    } else {
+      fail("amount_wire", `base=${a.toBaseUnits()} credits=${a.toCredits()} json=${JSON.stringify(a)}`);
+    }
+  } catch (e) { fail("amount_wire", e); }
+
+  // economy_gated: transfer outcome must match the node's economy mode
+  try {
+    let okv = null, detail = "";
+    try {
+      await ce.economy.transfer(self, Amount.fromCredits("1"));
+      okv = econ; detail = "transfer succeeded while economy disabled";
+    } catch (e) {
+      okv = !econ; detail = econ ? `economy on but transfer failed: ${e}` : "";
+    }
+    if (okv) pass("economy_gated"); else fail("economy_gated", detail);
+  } catch (e) { fail("economy_gated", e); }
 
   let allPass = true;
   for (const [id, okv, d] of results) {

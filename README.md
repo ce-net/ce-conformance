@@ -33,9 +33,17 @@ pubsub_text               ok        ok        ok        ok
 binary_payload            ok        ok        ok        ok
 request_reply             ok        ok        ok        ok
 request_unknown_errors    ok        ok        ok        ok
+blob_roundtrip            ok        ok        ok        ok
+object_roundtrip          ok        ok        ok        ok
+object_cid                ok        ok        ok        ok
+amount_wire               ok        ok        ok        ok
+economy_gated             ok        ok        ok        ok
 
 RESULT: PASS (all runners conformant)
 ```
+
+Both tiers run: **Tier A** (the app/mesh surface) and **Tier B** (money, blobs, content-addressed
+objects, economy). See [`SCENARIOS.md`](SCENARIOS.md).
 
 The driver auto-skips a language whose toolchain is absent, and exits non-zero on any FAIL. (The
 Rust runner compiles ce-rs on first run, ~1-2 min; the TS runner builds ce-ts's dist once if absent.)
@@ -60,8 +68,10 @@ The kit is not ceremony: adding the TS runner immediately surfaced a real intero
 `reply_token` is a u64 that can exceed JS's 2^53 safe integer; ce-ts parsed it with `JSON.parse`,
 rounding it, so `mesh.reply()` sent the wrong token and every request timed out — while Go (`uint64`)
 and Python (bigint) parsed it losslessly and passed. The red cell drove the fix (ce-ts now carries
-`replyToken` as a lossless string). That is the whole point: cross-language drift becomes a failing
-test, not a latent production bug.
+`replyToken` as a lossless string). Adding the Tier-B `economy_gated` scenario then caught a second
+one — ce-ts's `NodeStatus` didn't expose the node's `economy` flag that Go/Python/Rust all surface
+(fixed). That is the whole point: cross-language drift becomes a failing test, not a latent
+production bug.
 
 ## How a runner works
 

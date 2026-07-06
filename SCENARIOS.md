@@ -40,11 +40,27 @@ driver `run.sh` parses these lines into a cross-language matrix and returns non-
 - **Bounded waits.** Every receive/await has a timeout; a scenario that would block forever is a
   FAIL, never a hang.
 
+## Tier B — the full node surface
+
+These run right after Tier A in every runner, exercising the full-node SDK surface (money, blobs,
+content-addressed objects, economy) that `ce-rs`/`ce-ts`/`ce-go`/`ce-py` all implement.
+
+| id | asserts |
+|---|---|
+| `blob_roundtrip` | `put_blob(data)` returns a hash equal to the locally computed `cid(data)` (lowercase hex SHA-256), and `get_blob` returns the exact bytes. Proves the SDK's content id matches the node's. |
+| `object_roundtrip` | A multi-chunk object (`2·chunkSize + 123` bytes) round-trips byte-exact through `put_object`/`get_object` (1 MiB chunks, per-chunk CID verify). |
+| `object_cid` | `put_object` of the **canonical object** — bytes `0x00..0xff` (256 bytes) — returns the pinned CID `6523c7e119dc980a9267de7c59a8e5390c294646a1c7ab28e218de0da0b69994`. Every SDK must match it: this is the cross-language content-address portability guarantee (identical chunking + manifest bytes). |
+| `amount_wire` | `parse_credits("1.5")` yields `1500000000000000000` base units, renders back to `"1.5"`, and serializes to the JSON **string** `"1500000000000000000"` — money is integer base units on the wire, never a float or a JSON number. |
+| `economy_gated` | A `transfer` to self of 1 credit succeeds iff the node's `status.economy` is enabled, and is refused (a graceful error, never success, never a hang) when it is off. Every SDK must surface the node's economy mode and gate accordingly. |
+
+The canonical object's manifest is the compact JSON
+`{"kind":"ce-object-v1","chunk_size":1048576,"total_size":256,"chunks":["<sha256 of 0x00..0xff>"]}`;
+the object CID is its SHA-256. Any SDK whose chunking or manifest differs by a byte fails `object_cid`.
+
 ## Not yet covered (future tiers)
 
 - **Multi-node pubsub fan-out** — true cross-node delivery needs the kit to boot ≥2 nodes; a hook
   for the ce testing framework. The single-node scenarios above already exercise the full local
   publish→stream and request→reply paths (a node delivers its own published/directed messages to
   its local subscribers, verified live).
-- **Tier B**: jobs, signals, streams, wallet/caps/tags, blobs (`data`), and the OPTIONAL economy
-  (must tolerate its absence). Added as `runners/*/` grow to full-node parity.
+- **More Tier B**: jobs lifecycle, signals, block/tx streams, wallet/caps/tags — added as needed.
