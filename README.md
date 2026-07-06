@@ -12,6 +12,9 @@ live node + a driver that runs every runner and prints a cross-language pass/fai
 **"Prove scalability" becomes a checkmark, not a code review.** Adding a language to CE is: write
 a runner in `runners/<lang>/` that speaks the `CONF` output contract, and make it green here.
 
+Rationale, the contributor guide (add a language / add a scenario), and the design decisions are in
+**[DESIGN.md](DESIGN.md)**; the behavioral contract itself is **[SCENARIOS.md](SCENARIOS.md)**.
+
 ## Run it
 
 Needs one live CE node (any node — the kit tests the economy-agnostic mesh surface, so it does
