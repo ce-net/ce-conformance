@@ -9,6 +9,7 @@ publish = false
 # so the runner exercises local WIP; a standalone checkout would switch this to the git dep.
 [dependencies]
 ce-rs = { path = "../../../ce-rs" }
+ce-economy = { git = "https://github.com/ce-net/economy-adapter" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 futures-util = "0.3"
 anyhow = "1"

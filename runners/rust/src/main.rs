@@ -9,7 +9,8 @@
 //! with the same ids and output contract, so the driver (../../run.sh) builds one cross-language
 //! matrix.
 
-use ce_rs::{cid, Amount, CeClient};
+use ce_economy::Amount;
+use ce_rs::{cid, CeClient};
 use futures_util::StreamExt;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -237,7 +238,9 @@ fn b_amount_wire() -> Outcome {
 }
 
 async fn b_economy_gated(ce: &CeClient, self_id: &str, econ: bool) -> Outcome {
-    let r = ce.transfer(self_id, Amount::from_credits(1)).await;
+    let r = ce_economy::EconomyClient::new(ce.clone())
+        .transfer(self_id, Amount::from_credits(1))
+        .await;
     if econ {
         match r {
             Ok(_) => ok(),

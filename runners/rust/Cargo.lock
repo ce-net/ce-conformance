@@ -77,11 +77,24 @@ name = "ce-conformance-rust"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "ce-economy",
  "ce-rs",
  "futures-util",
  "hex",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "ce-economy"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ce-rs",
+ "futures-core",
+ "futures-util",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
