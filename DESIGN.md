@@ -114,8 +114,8 @@ standalone. The CE standard is "cross-repo deps are github git deps; a fresh clo
 published sources; a local checkout override is a convenience, not a requirement." The runners do NOT
 yet fully meet that: today they reach the SDKs by sibling path (`go.mod` `replace ../../../ce-go`,
 `Cargo.toml` `path = ../../../ce-rs`, the TS runner imports `../../../ce-ts/dist`, the Python runner
-reads `$CE_PY_DIR`). That is convenient in the `~/ce-net` workspace but assumes the siblings are
+reads `$CE_PY_DIR`). That is convenient in a full local workspace checkout but assumes the siblings are
 present. **TODO** (tracked): switch each runner to a github dep by default (`go get …@main`, a Cargo
 `git =` dep, `@ce-net/sdk` / `github:ce-net/ce-ts`, a vendored `ce.py`) with the local WIP checkout as
 an opt-in override — so a fresh clone runs against the published SDKs. Until then, run it from a full
-`~/ce-net` checkout.
+a full local workspace checkout (all SDK repos present as siblings).
