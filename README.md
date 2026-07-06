@@ -27,29 +27,41 @@ Example output:
 
 ```
 === conformance matrix ===
-scenario                  go        python
-status                    ok        ok
-pubsub_text               ok        ok
-binary_payload            ok        ok
-request_reply             ok        ok
-request_unknown_errors    ok        ok
+scenario                  go        python    ts        rust
+status                    ok        ok        ok        ok
+pubsub_text               ok        ok        ok        ok
+binary_payload            ok        ok        ok        ok
+request_reply             ok        ok        ok        ok
+request_unknown_errors    ok        ok        ok        ok
 
 RESULT: PASS (all runners conformant)
 ```
 
-The driver auto-skips a language whose toolchain is absent, and exits non-zero on any FAIL.
+The driver auto-skips a language whose toolchain is absent, and exits non-zero on any FAIL. (The
+Rust runner compiles ce-rs on first run, ~1-2 min; the TS runner builds ce-ts's dist once if absent.)
 
 ## Layout
 
 ```
 SCENARIOS.md         the language-neutral behavioral contract (the source of truth)
 run.sh               the driver: run every runner, build the matrix, gate on failures
-runners/go/          Go runner   — drives ce-go   (github.com/ce-net/ce-go)
-runners/python/      Python runner — drives ce.py (../ce-py, via $CE_PY_DIR)
+runners/go/          Go runner     — drives ce-go   (github.com/ce-net/ce-go)
+runners/python/      Python runner — drives ce.py   (../ce-py, via $CE_PY_DIR)
+runners/ts/          TS/JS runner  — drives @ce-net/sdk (imports ../../../ce-ts/dist)
+runners/rust/        Rust runner   — drives ce-rs   (path dep on ../../../ce-rs), the reference SDK
 ```
 
-Runners to add next (mechanical — same scenarios, same `CONF` lines): `runners/ts/` (`@ce-net/sdk`),
-`runners/rust/` (`ce-rs`, the reference). Then the whole matrix widens as new languages arrive.
+All four current CE SDKs are covered. Adding the next language is mechanical: a new `runners/<lang>/`
+that speaks the `CONF` output contract, made green here.
+
+## What the kit is for — a worked example
+
+The kit is not ceremony: adding the TS runner immediately surfaced a real interop bug. The node's
+`reply_token` is a u64 that can exceed JS's 2^53 safe integer; ce-ts parsed it with `JSON.parse`,
+rounding it, so `mesh.reply()` sent the wrong token and every request timed out — while Go (`uint64`)
+and Python (bigint) parsed it losslessly and passed. The red cell drove the fix (ce-ts now carries
+`replyToken` as a lossless string). That is the whole point: cross-language drift becomes a failing
+test, not a latent production bug.
 
 ## How a runner works
 

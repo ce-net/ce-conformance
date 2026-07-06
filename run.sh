@@ -62,6 +62,27 @@ else
   echo "(skip python: python3 not found)"
 fi
 
+if command -v node >/dev/null 2>&1; then
+  # ce-ts ships a dependency-free ESM dist the runner imports directly; build it once if absent.
+  if [ ! -f "$WS/ce-ts/dist/index.js" ] && command -v npm >/dev/null 2>&1; then
+    echo "building ce-ts dist..."; ( cd "$WS/ce-ts" && npm run build >/dev/null 2>&1 )
+  fi
+  if [ -f "$WS/ce-ts/dist/index.js" ]; then
+    run_lang ts "CE_NODE_URL='$NODE' node '$HERE/runners/ts/run.mjs'"
+  else
+    echo "(skip ts: ce-ts/dist not built — run 'npm run build' in ce-ts)"
+  fi
+else
+  echo "(skip ts: node not found)"
+fi
+
+if command -v cargo >/dev/null 2>&1; then
+  # First run compiles ce-rs (~1-2 min); subsequent runs are instant.
+  run_lang rust "cd '$HERE/runners/rust' && CE_NODE_URL='$NODE' cargo run -q"
+else
+  echo "(skip rust: cargo not found)"
+fi
+
 printf '\n=== conformance matrix ===\n'
 printf '%-26s' "scenario"
 for l in $LANGS; do printf '%-10s' "$l"; done

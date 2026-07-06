@@ -1,5 +1,8 @@
 # Go build artifacts
 runners/go/go
+# Rust build artifacts
+runners/rust/target/
+# transient
 *.exe
 *.out
 *.err
