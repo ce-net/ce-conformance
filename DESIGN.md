@@ -118,4 +118,4 @@ reads `$CE_PY_DIR`). That is convenient in a full local workspace checkout but a
 present. **TODO** (tracked): switch each runner to a github dep by default (`go get …@main`, a Cargo
 `git =` dep, `@ce-net/sdk` / `github:ce-net/ce-ts`, a vendored `ce.py`) with the local WIP checkout as
 an opt-in override — so a fresh clone runs against the published SDKs. Until then, run it from a full
-a full local workspace checkout (all SDK repos present as siblings).
+local workspace checkout (all SDK repos present as siblings).
