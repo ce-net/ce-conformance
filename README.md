@@ -56,10 +56,10 @@ Rust runner compiles ce-rs on first run, ~1-2 min; the TS runner builds ce-ts's 
 ```
 SCENARIOS.md         the language-neutral behavioral contract (the source of truth)
 run.sh               the driver: run every runner, build the matrix, gate on failures
-runners/go/          Go runner     — drives ce-go   (github.com/ce-net/ce-go)
-runners/python/      Python runner — drives ce.py   (../ce-py, via $CE_PY_DIR)
-runners/ts/          TS/JS runner  — drives @ce-net/sdk (imports ../../../ce-ts/dist)
-runners/rust/        Rust runner   — drives ce-rs   (path dep on ../../../ce-rs), the reference SDK
+runners/go/          Go runner     — drives ce-go
+runners/python/      Python runner — drives ce.py
+runners/ts/          TS/JS runner  — drives @ce-net/sdk
+runners/rust/        Rust runner   — drives ce-rs, the reference SDK
 ```
 
 All four current CE SDKs are covered. Adding the next language is mechanical: a new `runners/<lang>/`
@@ -90,9 +90,7 @@ runners stay tiny and each SDK remains the source of truth for its own behavior.
 
 ## Where this is going
 
-This is the seed of the wider CE testing framework (`PLAN/ce-testing-framework.md`): it will
-grow to boot ephemeral nodes itself (including ≥2-node topologies for true cross-node pubsub),
-and to a Tier-B suite (jobs/signals/streams/wallet/blobs, economy-optional). For now it runs
-against a node you already have, which is enough to keep the SDK family in lockstep.
-
-Design + strategy: `PLAN/ce-polyglot-sdks.md`.
+This is a seed for a wider distributed test framework: it will grow to boot ephemeral nodes
+itself (including ≥2-node topologies for true cross-node pubsub) and to a fuller Tier-B suite
+(jobs/signals/streams). For now it runs against a node you already have, which is enough to keep
+the SDK family in lockstep. Design, decisions, and the contributor guide: [DESIGN.md](DESIGN.md).
