@@ -5,10 +5,11 @@ edition = "2024"
 publish = false
 
 # The Rust conformance runner drives the ce-rs SDK through the shared Tier-A scenario contract.
-# ce-rs is depended on by path to the sibling working tree (like the Go runner's local replace),
-# so the runner exercises local WIP; a standalone checkout would switch this to the git dep.
+# ce-rs is a github git dep, so a fresh standalone clone builds against the published SDK; in a
+# full local workspace checkout, tools/ce-dev-link generates a git-excluded [patch] config that
+# points it at the sibling working tree so the runner exercises local WIP.
 [dependencies]
-ce-rs = { path = "../../../ce-rs" }
+ce-rs = { git = "https://github.com/ce-net/ce-rs" }
 ce-economy = { git = "https://github.com/ce-net/economy-adapter" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 futures-util = "0.3"
